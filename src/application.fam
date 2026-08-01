@@ -1,0 +1,12 @@
+App(
+    appid="ghoul_scope",
+    name="GhoulScope",
+    apptype=FlipperAppType.EXTERNAL,
+    entry_point="ghoul_scope_app",
+    requires=["gui"],
+    stack_size=3 * 1024,
+    fap_version="1.0",
+    fap_category="Ghosts",
+    fap_author="Codex",
+    fap_description="Passive Sub-GHz field and noise recorder",
+)
