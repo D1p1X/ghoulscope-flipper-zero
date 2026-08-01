@@ -11,8 +11,8 @@ GhoulScope does **not** prove paranormal activity. It measures local changes in 
 - Passive receiver-only scan on 433.42, 433.92, 434.42 and 868.35 MHz
 - Automatic room calibration with slow baseline drift correction
 - Adjustable sensitivity and sampling interval
-- Clear continuous signal meter with a threshold marker
-- RGB LED activity meter: green → yellow → red, with selectable brightness or OFF
+- Clear continuous signal meter with a threshold marker and a small session-peak tick
+- Stable RGB activity meter: green → yellow → red → magenta → white, with selectable brightness or OFF
 - Optional dynamic beep and vibration: stronger activity gives a higher, longer, more frequent alert
 - A dedicated **Test alert** that forces a short audible + haptic confirmation, even if the device is in Stealth mode
 - CSV logging to the SD card
@@ -63,6 +63,8 @@ Open `Back → Settings`:
 - **Test alert** — plays a clear 280 ms beep + vibration confirmation using the current alert switches. This is useful after changing settings.
 
 The manual test forces the notification output so it remains useful if Flipper’s global Stealth/mute mode is on. Normal scan alerts still follow the two GhoulScope switches above.
+
+The LED does not blink: red means the configured limit was reached, magenta means a stronger change, and white marks extreme activity. The small tick above the signal bar keeps the strongest RSSI level seen since the app was opened.
 
 ## Recordings
 
