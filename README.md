@@ -34,6 +34,10 @@ GhoulScope does **not** prove paranormal activity. It measures local changes in 
 
 This release was compiled and tested on **Momentum Firmware API 87.1**. Other current, API-compatible firmware may also load it, but the included build is specifically verified on Momentum.
 
+## Source category
+
+The source manifest is categorized as **Sub-GHz**, which reflects what the app measures: received radio signal energy. The packaged copy may still be placed in the Flipper's **Ghosts** folder when you want its ghost-hunting presentation in that menu.
+
 ## Controls
 
 | Control | Action |
