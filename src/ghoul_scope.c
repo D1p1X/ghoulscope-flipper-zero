@@ -75,6 +75,7 @@ typedef struct {
     float calibration_sum;
     float baseline_rssi;
     float current_rssi;
+    float peak_rssi;
     float delta_rssi;
     char toast[24];
     char recording_path[96];
@@ -160,7 +161,11 @@ static void ghoul_led_off(GhoulScopeApp* app) {
     notification_message_block(app->notification, &sequence_reset_rgb);
 }
 
-/* The LED is a live, passive activity meter: green -> yellow -> red. */
+/*
+ * Stable LED levels: green -> yellow -> red -> magenta -> white.
+ * Red means the configured limit was reached; magenta and white make a
+ * much stronger change immediately distinguishable without any blinking.
+ */
 static void ghoul_led_update(GhoulScopeApp* app) {
     if(!app->led_enabled || !app->scanning) {
         ghoul_led_off(app);
@@ -173,16 +178,29 @@ static void ghoul_led_update(GhoulScopeApp* app) {
         if(threshold > 0.0f) activity = app->delta_rssi / threshold;
     }
     if(activity < 0.0f) activity = 0.0f;
-    if(activity > 1.0f) activity = 1.0f;
+    if(activity > 2.5f) activity = 2.5f;
 
     const uint8_t level = ghoul_led_brightness[app->led_brightness_index];
     uint8_t red = 0U;
-    uint8_t green = level;
+    uint8_t green = 0U;
+    uint8_t blue = 0U;
     if(activity < 0.5f) {
         red = (uint8_t)(level * activity * 2.0f);
-    } else {
+        green = level;
+    } else if(activity < 1.0f) {
         red = level;
         green = (uint8_t)(level * (1.0f - activity) * 2.0f);
+    } else if(activity < 1.75f) {
+        red = level;
+        blue = (uint8_t)(level * (activity - 1.0f) / 0.75f);
+    } else if(activity < 2.5f) {
+        red = level;
+        blue = level;
+        green = (uint8_t)(level * (activity - 1.75f) / 0.75f);
+    } else {
+        red = level;
+        green = level;
+        blue = level;
     }
 
     const NotificationMessage red_message = {
@@ -195,7 +213,7 @@ static void ghoul_led_update(GhoulScopeApp* app) {
     };
     const NotificationMessage blue_message = {
         .type = NotificationMessageTypeLedBlue,
-        .data.led.value = 0U,
+        .data.led.value = blue,
     };
     const NotificationSequence led_sequence = {
         &red_message,
@@ -365,7 +383,6 @@ static bool ghoul_record_open(GhoulScopeApp* app) {
     app->recording = true;
     app->record_count = 0;
     ghoul_toast(app, "Recording on");
-    notification_message(app->notification, &sequence_blink_blue_100);
     return true;
 }
 
@@ -373,7 +390,6 @@ static void ghoul_toggle_recording(GhoulScopeApp* app) {
     if(app->recording) {
         ghoul_record_close(app);
         ghoul_toast(app, "Recording saved");
-        notification_message(app->notification, &sequence_blink_green_100);
         return;
     }
 
@@ -417,6 +433,7 @@ static void ghoul_write_sample(GhoulScopeApp* app, bool anomaly) {
 static void ghoul_sample(GhoulScopeApp* app) {
     const uint32_t now = furi_get_tick();
     app->current_rssi = furi_hal_subghz_get_rssi();
+    if(app->current_rssi > app->peak_rssi) app->peak_rssi = app->current_rssi;
     app->last_anomaly = false;
 
     if(app->calibrating) {
@@ -427,7 +444,6 @@ static void ghoul_sample(GhoulScopeApp* app) {
         if(app->calibration_count >= GHOUL_CALIBRATION_SAMPLES) {
             app->calibrating = false;
             ghoul_toast(app, "Baseline ready");
-            notification_message(app->notification, &sequence_blink_green_100);
         }
         ghoul_write_sample(app, false);
         ghoul_led_update(app);
@@ -466,6 +482,13 @@ static void ghoul_draw_meter(Canvas* canvas, GhoulScopeApp* app) {
 
     canvas_draw_frame(canvas, 2, 43, 124, 10);
     if(width > 0U) canvas_draw_box(canvas, 3, 44, width, 8);
+
+    /* Small top tick: strongest signal seen since this app was launched. */
+    float peak = (app->peak_rssi - min_rssi) / (max_rssi - min_rssi);
+    if(peak < 0.0f) peak = 0.0f;
+    if(peak > 1.0f) peak = 1.0f;
+    const uint8_t peak_x = 3U + (uint8_t)(peak * 122.0f);
+    canvas_draw_line(canvas, peak_x, 40, peak_x, 42);
 
     if(!app->calibrating) {
         float threshold_rssi = app->baseline_rssi + ghoul_sensitivity_db[app->sensitivity_index];
@@ -547,7 +570,12 @@ static void ghoul_draw_callback(Canvas* canvas, void* context) {
 
     if(app->screen == GhoulScreenHelp) {
         canvas_set_font(canvas, FontPrimary);
-        canvas_draw_str(canvas, 2, 10, app->help_page == 0U ? "QUICK HELP 1/2" : "QUICK HELP 2/2");
+        canvas_draw_str(
+            canvas,
+            2,
+            10,
+            app->help_page == 0U ? "QUICK HELP 1/3" :
+                                  (app->help_page == 1U ? "QUICK HELP 2/3" : "QUICK HELP 3/3"));
         canvas_draw_line(canvas, 0, 13, 128, 13);
         canvas_set_font(canvas, FontSecondary);
         if(app->help_page == 0U) {
@@ -555,11 +583,16 @@ static void ghoul_draw_callback(Canvas* canvas, void* context) {
             canvas_draw_str(canvas, 2, 38, "LEFT/RIGHT: frequency");
             canvas_draw_str(canvas, 2, 50, "UP/DOWN: sensitivity");
             canvas_draw_str(canvas, 2, 63, "RIGHT next   BACK menu");
-        } else {
+        } else if(app->help_page == 1U) {
             canvas_draw_str(canvas, 2, 26, "Hold LEFT/RIGHT: rate");
-            canvas_draw_str(canvas, 2, 38, "Hold UP: calibrate");
-            canvas_draw_str(canvas, 2, 50, "Hold DOWN: clear events");
-            canvas_draw_str(canvas, 2, 63, "LEFT prev   BACK menu");
+            canvas_draw_str(canvas, 2, 38, "Hold DOWN: clear events");
+            canvas_draw_str(canvas, 2, 50, "Hold UP: recalibrate");
+            canvas_draw_str(canvas, 2, 63, "RIGHT colors BACK menu");
+        } else {
+            canvas_draw_str(canvas, 2, 26, "G low / Y medium");
+            canvas_draw_str(canvas, 2, 38, "R=limit / M=strong");
+            canvas_draw_str(canvas, 2, 50, "W=extreme activity");
+            canvas_draw_str(canvas, 2, 63, "Top tick: max signal");
         }
         return;
     }
@@ -757,10 +790,10 @@ static bool ghoul_handle_help_input(GhoulScopeApp* app, const InputEvent* event)
         app->screen = GhoulScreenMenu;
         break;
     case InputKeyLeft:
-        app->help_page = 0U;
+        if(app->help_page > 0U) app->help_page--;
         break;
     case InputKeyRight:
-        app->help_page = 1U;
+        if(app->help_page < 2U) app->help_page++;
         break;
     default:
         break;
@@ -847,6 +880,7 @@ int32_t ghoul_scope_app(void* p) {
         .sample_period_ms = ghoul_rates_ms[1],
         .baseline_rssi = -127.0f,
         .current_rssi = -127.0f,
+        .peak_rssi = -127.0f,
         .delta_rssi = 0.0f,
     };
 
