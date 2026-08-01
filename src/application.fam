@@ -6,7 +6,7 @@ App(
     requires=["gui"],
     stack_size=3 * 1024,
     fap_version="1.0",
-    fap_category="Ghosts",
+    fap_category="Sub-GHz",
     fap_author="Codex",
     fap_description="Passive Sub-GHz field and noise recorder",
 )
